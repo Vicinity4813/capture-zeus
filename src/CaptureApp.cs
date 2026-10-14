@@ -22,7 +22,7 @@ using ZeusCap;
 [assembly: System.Reflection.AssemblyDescription("Assemble un panorama de la cité entière de Zeus : Le Maître de l'Olympe / Poséidon à partir de captures d'écran (défilement de la vue au clavier). Aucune connexion réseau ; les images sont enregistrées dans le dossier du programme.")]
 [assembly: System.Reflection.AssemblyCompany("Capture Zeus (fan project)")]
 [assembly: System.Reflection.AssemblyProduct("Capture Zeus")]
-[assembly: System.Reflection.AssemblyCopyright("© 2026 Capture Zeus contributors - MIT License")]
+[assembly: System.Reflection.AssemblyCopyright("© 2026 Vicinity4813 - MIT License")]
 [assembly: System.Resources.NeutralResourcesLanguage("fr-FR")]
 [assembly: System.Runtime.InteropServices.ComVisible(false)]
 [assembly: System.Reflection.AssemblyVersion("2.4.0.0")]

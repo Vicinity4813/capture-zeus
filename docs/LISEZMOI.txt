@@ -36,8 +36,8 @@ Utilisation
 La liste « Langue » en haut à droite passe le programme en anglais (English) ;
 le choix est gardé pour les fois suivantes. La case « Sans musique » fait la
 capture en silence. La musique de travail est une petite mélodie générée par le
-programme ; pour utiliser la vôtre, placez un fichier « music.wav » à côté de
-« Capture Zeus.exe ».
+programme ; pour utiliser la vôtre, placez un fichier .wav à côté de
+« Capture Zeus.exe » (s'il y en a plusieurs, « music.wav » est choisi en priorité).
 
 Où sont les images
 ------------------

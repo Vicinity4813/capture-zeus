@@ -46,7 +46,7 @@ static class Signal
     }
 
     // Musique de travail, jouee en boucle du debut de la capture jusqu'a la fin du panorama :
-    // music.wav (ou musique.wav) place a cote de l'exe s'il existe, sinon une melodie douce generee par le programme.
+    // un fichier .wav place a cote de l'exe (music.wav en priorite) s'il existe, sinon une melodie generee par le programme.
     // Windows ne joue qu'un son a la fois par programme : tout autre son de Signal arrete la boucle (reserve aux erreurs).
     static SoundPlayer loop;
     public static void StartLoop()
@@ -57,11 +57,16 @@ static class Signal
             if (loop == null)
             {
                 string dir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+                // music.wav ou musique.wav d'abord, sinon le premier fichier .wav du dossier (ordre alphabetique)
+                List<string> files = new List<string>();
                 foreach (string n in new[] { "music.wav", "musique.wav" })
+                    if (File.Exists(Path.Combine(dir, n))) files.Add(Path.Combine(dir, n));
+                string[] others = Directory.GetFiles(dir, "*.wav");
+                Array.Sort(others, StringComparer.OrdinalIgnoreCase);
+                files.AddRange(others);
+                foreach (string f in files)
                 {
-                    string f = Path.Combine(dir, n);
-                    if (!File.Exists(f)) continue;
-                    try { SoundPlayer p = new SoundPlayer(f); p.Load(); loop = p; break; } catch { }
+                    try { SoundPlayer p = new SoundPlayer(f); p.Load(); loop = p; break; } catch { }   // fichier illisible : suivant
                 }
                 if (loop == null) { loop = new SoundPlayer(Melody()); loop.Load(); }
             }

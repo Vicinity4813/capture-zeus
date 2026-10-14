@@ -58,6 +58,8 @@ Bon à savoir
   sur la carte ni la faire défiler).
 - Si vous fermez la fenêtre pendant une capture, le programme demande
   confirmation et remet le son du jeu avant de quitter.
+- Si le jeu reste muet après une capture interrompue (plantage, arrêt forcé),
+  relancez simplement Capture Zeus : il remet le son du jeu au démarrage.
 - Si la vue est déjà collée à un bord de la carte au départ, le programme
   s'adapte ; le plus sûr reste de partir du milieu de la ville.
 - La mer s'anime même en pause : quelques captures sur une mer sans repère

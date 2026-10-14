@@ -56,6 +56,8 @@ Good to know
   clicking on the map or scrolling it).
 - If you close the window during a capture, the program asks for confirmation
   and turns the game sound back on before quitting.
+- If the game stays silent after an interrupted capture (crash, forced stop),
+  just start Capture Zeus again: it turns the game sound back on at startup.
 - If the view already touches an edge of the map at the start, the program
   copes with it; starting from the middle of the city is still the safest.
 - The sea is animated even when the game is paused: a few screenshots over a

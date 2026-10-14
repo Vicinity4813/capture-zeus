@@ -2,6 +2,7 @@
 // Seules les sessions audio qui n'etaient pas deja muettes sont coupees, et ce sont elles qui sont retablies.
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.InteropServices;
 
 static class GameAudio
@@ -116,6 +117,7 @@ static class GameAudio
                 });
             }
             catch { }
+            if (muted.Count > 0) WriteMarker(pid);
             return muted.Count;
         }
     }
@@ -133,6 +135,50 @@ static class GameAudio
             }
             catch { }
             muted.Clear();
+            DeleteMarker();
         }
+    }
+
+    // ---- Securite en cas de plantage ou de fermeture forcee pendant une capture
+    // Windows memorise la coupure du son de chaque programme : si Capture Zeus s'arrete brutalement apres avoir
+    // coupe le jeu, le jeu resterait muet, meme relance. Une note est donc ecrite quand le son est coupe, effacee
+    // quand il est remis ; au lancement suivant, si la note est encore la, le son du jeu est remis.
+    static string MarkerFile
+    {
+        get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Capture Zeus", "son_coupe.txt"); }
+    }
+
+    static void WriteMarker(int pid)
+    {
+        try
+        {
+            string name = System.Diagnostics.Process.GetProcessById(pid).ProcessName;
+            Directory.CreateDirectory(Path.GetDirectoryName(MarkerFile));
+            File.WriteAllText(MarkerFile, name);
+        }
+        catch { }
+    }
+
+    static void DeleteMarker() { try { if (File.Exists(MarkerFile)) File.Delete(MarkerFile); } catch { } }
+
+    // A appeler au demarrage : remet le son du jeu coupe lors d'une capture interrompue.
+    // Renvoie le nombre de sessions remises ; la note est gardee tant que le jeu n'est pas lance.
+    public static int RecoverAfterCrash()
+    {
+        int n = 0;
+        try
+        {
+            if (!File.Exists(MarkerFile)) return 0;
+            string name = File.ReadAllText(MarkerFile).Trim();
+            if (name.Length == 0) { DeleteMarker(); return 0; }
+            System.Diagnostics.Process[] procs = System.Diagnostics.Process.GetProcessesByName(name);
+            if (procs.Length == 0) return 0;
+            Guid ctx = Guid.Empty;
+            foreach (System.Diagnostics.Process p in procs)
+                ForEachSession(p.Id, (id, v) => { bool m; v.GetMute(out m); if (m && v.SetMute(false, ref ctx) == 0) n++; });
+            DeleteMarker();
+        }
+        catch { }
+        return n;
     }
 }

@@ -25,9 +25,9 @@ using ZeusCap;
 [assembly: System.Reflection.AssemblyCopyright("© 2026 Vicinity4813 - MIT License")]
 [assembly: System.Resources.NeutralResourcesLanguage("fr-FR")]
 [assembly: System.Runtime.InteropServices.ComVisible(false)]
-[assembly: System.Reflection.AssemblyVersion("2.4.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("2.4.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersion("2.4")]
+[assembly: System.Reflection.AssemblyVersion("2.4.1.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.4.1.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("2.4.1")]
 
 static class CaptureApp
 {
@@ -99,6 +99,7 @@ static class CaptureApp
     {
         Native.SetProcessDPIAware();
         L.Load();
+        GameAudio.RecoverAfterCrash();   // son du jeu reste coupe apres une capture interrompue
         if (args.Length == 0)
         {
             // Mode fenetre (par defaut)
@@ -234,6 +235,7 @@ static class CaptureApp
         Console.WriteLine(L.T("Passage sur le jeu...", "Switching to the game..."));
         Signal.Banner(L.T("CAPTURE EN COURS\nNe touchez ni à la souris ni au clavier tant que la musique joue", "CAPTURE IN PROGRESS\nDo not touch the mouse or keyboard while the music is playing"), ConsoleColor.DarkRed);
         if (!ForceForeground(hwnd)) throw new Exception(L.T("Impossible de mettre le jeu au premier plan : cliquez dans le jeu puis relancez la capture.", "Could not bring the game to the front: click in the game, then start the capture again."));
+        GameAudio.RecoverAfterCrash();
         int nm = GameAudio.Mute(proc.Id);
         Console.WriteLine(nm > 0 ? L.T("Son du jeu coupé pendant la capture.", "Game sound muted during the capture.") : L.T("Son du jeu : aucune sortie audio trouvée à couper.", "Game sound: no audio output found to mute."));
         Thread.Sleep(2000);   // le jeu repasse en plein ecran et se redessine

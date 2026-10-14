@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity version="2.4.0.0" processorArchitecture="x86" name="CaptureZeus.Panorama" type="win32" />
+  <assemblyIdentity version="2.4.1.0" processorArchitecture="x86" name="CaptureZeus.Panorama" type="win32" />
   <description>Capture Zeus - panorama de la cite entiere (Zeus : Le Maitre de l'Olympe)</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>

@@ -1,0 +1,11 @@
+# Build output / fichiers compiles
+dist/
+*.exe
+*.pdb
+
+# Captures made while testing / captures faites pendant les essais
+capture_*/
+
+# Personal music (copyrighted game audio must not be published)
+# Musique personnelle (la musique du jeu ne doit pas etre publiee)
+*.wav

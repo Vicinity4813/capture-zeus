@@ -5,6 +5,8 @@
 
 The game only shows part of your city at a time. Capture Zeus scrolls the view by itself, takes a screenshot at every step, aligns them precisely and stitches everything into **one big PNG picture of the whole city**.
 
+![A whole city captured with Capture Zeus (half-size panorama)](docs/images/panorama-example.webp)
+
 ## Download
 
 Get the latest zip from the **[Releases](../../releases)** page, unzip it anywhere you can write (not in *Program Files*) and run `Capture Zeus.exe`. Nothing to install.
@@ -18,7 +20,11 @@ Get the latest zip from the **[Releases](../../releases)** page, unzip it anywhe
 3. The banner turns red: **don't touch the mouse or the keyboard** while the music plays. The program switches to the game by itself, mutes it and scrolls the view.
 4. When the music stops, the panorama is ready (green banner): click **View the panorama**.
 
+<p align="center"><img src="docs/images/window.png" width="560" alt="Capture Zeus window after a capture: green banner and log"></p>
+
 Each capture creates a `capture_YYYYMMDD_HHMMSS` folder next to the exe, with `panorama.png` (or `panorama_x0.5.png`), the individual screenshots `frame_*.png` and `positions.csv`.
+
+![Content of a capture folder: the screenshots, the panorama and positions.csv](docs/images/capture-folder.png)
 
 - Moving the mouse stops the capture (that is the way to interrupt it).
 - An accidental Alt+Tab breaks nothing: the capture pauses and resumes when you go back to the game.
@@ -61,6 +67,8 @@ MIT, see [LICENSE](LICENSE). This is a fan project, not affiliated with Impressi
 
 Le jeu ne montre qu'une partie de la cité à la fois. Capture Zeus fait défiler la vue tout seul, prend une capture d'écran à chaque pas, les recale précisément et assemble le tout en **une seule grande image PNG de la cité entière**.
 
+![Une cité entière capturée avec Capture Zeus (panorama réduit de moitié)](docs/images/panorama-example.webp)
+
 ### Téléchargement
 
 Prenez le dernier zip sur la page **[Releases](../../releases)**, décompressez-le dans un dossier où vous pouvez écrire (pas dans *Program Files*) et lancez `Capture Zeus.exe`. Rien à installer.
@@ -74,7 +82,11 @@ Prenez le dernier zip sur la page **[Releases](../../releases)**, décompressez-
 3. Le bandeau devient rouge : **ne touchez ni à la souris ni au clavier** tant que la musique joue. Le programme passe tout seul sur le jeu, lui coupe le son et fait défiler la vue.
 4. Quand la musique s'arrête, le panorama est prêt (bandeau vert) : cliquez sur **Voir le panorama**.
 
+<p align="center"><img src="docs/images/window.png" width="560" alt="La fenêtre de Capture Zeus après une capture : bandeau vert et journal"></p>
+
 Chaque capture crée un dossier `capture_AAAAMMJJ_HHMMSS` à côté de l'exe, avec `panorama.png` (ou `panorama_x0.5.png`), les captures une par une `frame_*.png` et `positions.csv`.
+
+![Contenu d'un dossier de capture : les captures, le panorama et positions.csv](docs/images/capture-folder.png)
 
 - Bouger la souris arrête la capture (c'est le moyen de l'interrompre).
 - Un Alt+Tab par erreur ne casse rien : la capture se met en pause et reprend quand vous revenez dans le jeu.

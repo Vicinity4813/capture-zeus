@@ -106,6 +106,16 @@ namespace ZeusCap
             return new int[] { p.X, p.Y, r.Right - r.Left, r.Bottom - r.Top };
         }
 
+        [DllImport("user32.dll")] static extern bool GetClipCursor(out RECT r);
+
+        // Zone ou le curseur est confine (ClipCursor) : x1, y1, x2, y2 exclus. Tout l'ecran si rien n'est confine.
+        public static int[] CursorClip()
+        {
+            RECT r;
+            if (!GetClipCursor(out r)) return null;
+            return new int[] { r.Left, r.Top, r.Right, r.Bottom };
+        }
+
         public static int[] CursorPos()
         {
             POINT p;
@@ -157,6 +167,139 @@ namespace ZeusCap
                 }
             }
             return g;
+        }
+
+        // Pixels en couleur (B, V, R a la suite) : le cadre rouge de la mini-carte se voit mal en gris sur la mer bleue.
+        public static byte[] Rgb(Bitmap bmp)
+        {
+            int w = bmp.Width, h = bmp.Height;
+            BitmapData d = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+            byte[] raw = new byte[d.Stride * h];
+            Marshal.Copy(d.Scan0, raw, 0, raw.Length);
+            bmp.UnlockBits(d);
+            byte[] c = new byte[w * h * 3];
+            for (int y = 0; y < h; y++) Array.Copy(raw, y * d.Stride, c, y * w * 3, w * 3);
+            return c;
+        }
+
+        // Image du jeu dans la fenetre (le reste est noir quand le jeu est plus petit que l'ecran) : { gauche, haut, droite, bas }
+        // (droite et bas exclus), ou null. Reperee sur la barre du haut et le panneau lateral, jamais noirs,
+        // et non sur la carte (qui peut etre de la mer ou du noir au bord).
+        public static int[] PictureRect(byte[] g, int w, int h)
+        {
+            Func<int, int, bool> lit = (x, y) => g[y * w + x] > 12;
+            int top = -1;
+            for (int y = 0; y < h / 2 && top < 0; y++)
+            {
+                int n = 0;
+                for (int x = 0; x < w; x++) if (lit(x, y)) n++;
+                if (n >= 200) top = y;
+            }
+            if (top < 0) return null;
+            // Gauche et droite : colonnes allumees dans la barre du haut (20 lignes)
+            int band = Math.Min(20, h - top), left = -1, right = -1;
+            for (int x = 0; x < w && left < 0; x++)
+            {
+                int n = 0;
+                for (int y = top; y < top + band; y++) if (lit(x, y)) n++;
+                if (n * 2 > band) left = x;
+            }
+            for (int x = w - 1; x >= 0 && right < 0; x--)
+            {
+                int n = 0;
+                for (int y = top; y < top + band; y++) if (lit(x, y)) n++;
+                if (n * 2 > band) right = x + 1;
+            }
+            if (left < 0 || right - left < 640) return null;
+            // Bas : derniere ligne allumee dans le panneau lateral (les 150 colonnes de droite)
+            int bottom = -1;
+            for (int y = h - 1; y > top && bottom < 0; y--)
+            {
+                int n = 0, cnt = 0;
+                for (int x = right - 150; x < right - 10; x += 2) { cnt++; if (lit(x, y)) n++; }
+                if (n * 2 > cnt) bottom = y + 1;
+            }
+            if (bottom - top < 480) return null;
+            return new[] { left, top, right, bottom };
+        }
+
+        static bool IsRed(byte[] c, int i) { int b = c[i], g = c[i + 1], r = c[i + 2]; return r >= 150 && r - g >= 70 && r - b >= 70; }
+
+        // Cadre rouge de la vue sur la mini-carte (image Rgb w x h) : { x1, y1, x2, y2 } (bords inclus) ou null.
+        // Deux traits horizontaux de meme debut et meme longueur, relies par deux traits verticaux
+        // (les batiments rouges de la mini-carte n'ont pas cette forme).
+        public static int[] FindRedFrame(byte[] c, int w, int h)
+        {
+            Func<int, int, bool> red = (x, y) => IsRed(c, (y * w + x) * 3);
+            List<int[]> runs = new List<int[]>();   // y, x debut, x fin
+            for (int y = 0; y < h; y++)
+            {
+                int x = 0;
+                while (x < w)
+                {
+                    if (!red(x, y)) { x++; continue; }
+                    int s = x; while (x < w && red(x, y)) x++;
+                    if (x - s >= 8) runs.Add(new[] { y, s, x - 1 });
+                }
+            }
+            int[] best = null; int bestArea = 0;
+            foreach (int[] t in runs)
+                foreach (int[] b in runs)
+                {
+                    int hh = b[0] - t[0];
+                    if (hh < 8 || Math.Abs(b[1] - t[1]) > 1 || Math.Abs(b[2] - t[2]) > 1) continue;
+                    int okL = 0, okR = 0;
+                    for (int y = t[0]; y <= b[0]; y++)
+                    {
+                        if (red(t[1], y) || (t[1] + 1 < w && red(t[1] + 1, y))) okL++;
+                        if (red(t[2], y) || (t[2] > 0 && red(t[2] - 1, y))) okR++;
+                    }
+                    if (okL * 10 < (hh + 1) * 8 || okR * 10 < (hh + 1) * 8) continue;
+                    int area = (t[2] - t[1]) * hh;
+                    if (area > bestArea) { bestArea = area; best = new[] { t[1], t[0], t[2], b[0] }; }
+                }
+            return best;
+        }
+
+        // Glissement du contenu de la mini-carte entre deux captures (la mini-carte d'une grande carte defile) :
+        // decalage { dx, dy, ecart moyen x100 } le long de l'axe (+/- range), a +/- 1 px en travers.
+        // Le cadre rouge (fa, fb) est exclu de la comparaison.
+        public static int[] MiniShift(byte[] a, int[] fa, byte[] b, int[] fb, int w, int h, int axis, int range)
+        {
+            Func<int[], int, int, bool> onFrame = (f, x, y) => f != null && x >= f[0] - 1 && x <= f[2] + 1 && y >= f[1] - 1 && y <= f[3] + 1
+                && (x <= f[0] + 1 || x >= f[2] - 1 || y <= f[1] + 1 || y >= f[3] - 1);
+            int[] best = null;
+            int[] bestAt = new int[2 * range + 1];   // meilleur ecart pour chaque decalage le long de l'axe
+            for (int s = -range; s <= range; s++)
+            {
+                bestAt[s + range] = int.MaxValue;
+                for (int t = -1; t <= 1; t++)
+                {
+                    int dx = axis == 0 ? s : t, dy = axis == 0 ? t : s;
+                    long sum = 0; int n = 0;
+                    // contenu de b en (x, y) = contenu de a en (x - dx, y - dy)
+                    for (int y = Math.Max(0, dy); y < Math.Min(h, h + dy); y++)
+                        for (int x = Math.Max(0, dx); x < Math.Min(w, w + dx); x++)
+                        {
+                            int xa = x - dx, ya = y - dy;
+                            if (onFrame(fb, x, y) || onFrame(fa, xa, ya)) continue;
+                            int ib = (y * w + x) * 3, ia = (ya * w + xa) * 3;
+                            sum += Math.Abs(a[ia] - b[ib]) + Math.Abs(a[ia + 1] - b[ib + 1]) + Math.Abs(a[ia + 2] - b[ib + 2]);
+                            n++;
+                        }
+                    if (n < w * h / 3) continue;
+                    int score = (int)(sum * 100 / (3L * n));
+                    bestAt[s + range] = Math.Min(bestAt[s + range], score);
+                    if (best == null || score < best[2]) best = new[] { dx, dy, score };
+                }
+            }
+            if (best == null) return null;
+            // Mini-carte uniforme (pleine mer jusque sur la mini-carte) : un autre decalage, non voisin, convient
+            // presque aussi bien -> mesure ambigue, refusee.
+            int along = axis == 0 ? best[0] : best[1], second = int.MaxValue;
+            for (int s = -range; s <= range; s++) if (Math.Abs(s - along) > 1) second = Math.Min(second, bestAt[s + range]);
+            if (second != int.MaxValue && second - best[2] < 150) return null;
+            return best;
         }
 
         // Part des pixels qui different de plus de 10 niveaux de gris.
@@ -362,6 +505,9 @@ namespace ZeusCap
         public static bool IsReliable(int[] res, double maxScore, double minGap)
         {
             if (res == null || res[2] > maxScore * 100) return false;
+            // Correspondance quasi parfaite (terre, batiments) : on la croit meme si la mer, ailleurs, ressemble un peu
+            // (ex. au bord de la carte, la vue n'avance que de 60 px : score 0, second 1,9).
+            if (res[2] <= 30 && res[4] - res[2] >= 100) return true;
             return res[4] == int.MaxValue || res[4] - res[2] >= minGap * 100;
         }
 
@@ -398,6 +544,46 @@ namespace ZeusCap
     // Les recalages nets deviennent des liens exacts ; faute de mieux, un lien estime (vitesse de defilement)
     // relie la capture a la precedente. Les positions finales sont calculees a la fin en n'utilisant les liens
     // estimes que pour raccrocher des groupes de captures qui n'ont aucun lien exact entre eux.
+    public static class Rows
+    {
+        // Balayage en serpentin : la rangee 1 part du coin haut-gauche (x = 0) vers la droite, la 2 repart du bord
+        // droit vers la gauche, etc. Chaque rangee commence donc sur un bord connu. En pleine mer, un pas estime
+        // de travers decalait toute la suite (fin de rangee placee au-dela du bord, puis rangees suivantes heritant
+        // du decalage). On recale chaque rangee sur le bord ou elle commence, puis on borne a la largeur de la carte
+        // (la largeur de rangee la plus frequente). rowOf : numero de rangee (1, 2...) de chaque capture.
+        // Renvoie le nombre de captures deplacees.
+        public static int Anchor(int[] xs, int[] rowOf)
+        {
+            Dictionary<int, int> lo = new Dictionary<int, int>(), hi = new Dictionary<int, int>(), first = new Dictionary<int, int>();
+            for (int i = 0; i < xs.Length; i++)
+            {
+                int r = rowOf[i];
+                if (!first.ContainsKey(r)) first[r] = i;
+                if (!lo.ContainsKey(r) || xs[i] < lo[r]) lo[r] = xs[i];
+                if (!hi.ContainsKey(r) || xs[i] > hi[r]) hi[r] = xs[i];
+            }
+            Dictionary<int, int> count = new Dictionary<int, int>();
+            foreach (int r in lo.Keys) { int wd = hi[r] - lo[r]; count[wd] = (count.ContainsKey(wd) ? count[wd] : 0) + 1; }
+            int width = -1, bestN = 1;
+            foreach (KeyValuePair<int, int> kv in count) if (kv.Value > bestN || (kv.Value == bestN && width >= 0 && kv.Key < width)) { width = kv.Key; bestN = kv.Value; }
+            if (width <= 0) return 0;
+            int left = xs[0], moved = 0;
+            int[] shift = new int[xs.Length];
+            foreach (int r in first.Keys)
+            {
+                int start = (r % 2 == 1) ? left : left + width;   // rangees impaires vers la droite, paires vers la gauche
+                int s = start - xs[first[r]];
+                for (int i = 0; i < xs.Length; i++) if (rowOf[i] == r) shift[i] = s;
+            }
+            for (int i = 0; i < xs.Length; i++)
+            {
+                int x = Math.Max(left, Math.Min(left + width, xs[i] + shift[i]));
+                if (x != xs[i]) { xs[i] = x; moved++; }
+            }
+            return moved;
+        }
+    }
+
     public class Tracker
     {
         class Entry { public int Index, X, Y, Drift; public byte[] G; }

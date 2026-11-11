@@ -64,6 +64,9 @@ Good to know
 - The sea is animated even when the game is paused: a few screenshots over a
   sea with no landmarks may be placed by estimation (a message says so at the
   end).
+- GPU scaling (the graphics driver or a wrapper shows the game enlarged, for
+  example 1024x768 shown as 1280x1024) is supported: the enlargement is
+  detected and screenshots and panorama are saved at the game's own size.
 - If the message "The capture is black" appears, Windows cannot capture the
   game: run it in windowed mode (cnc-ddraw or DxWnd) and try again.
 - Some antivirus programs may distrust this program because it simulates

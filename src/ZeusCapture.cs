@@ -539,6 +539,94 @@ namespace ZeusCap
         }
     }
 
+    // Repere du jeu a l'ecran. La mise a l'echelle de la carte graphique (ou d'un enrobage comme cnc-ddraw) affiche
+    // l'image du jeu agrandie : 1024x768 montre en 1280x1024, par exemple. Toutes les coordonnees du programme sont
+    // en pixels du jeu ; Geo les traduit en pixels de l'ecran et ramene les captures a la taille du jeu.
+    // A l'echelle 1, Grab est exactement Img.Capture : rien ne change.
+    public class Geo
+    {
+        public int Ox, Oy, W, H;            // pixel ecran du coin du jeu, taille du jeu
+        public double Sx = 1, Sy = 1;       // agrandissement (pixels ecran par pixel du jeu)
+
+        public bool Unit { get { return Sx == 1 && Sy == 1; } }
+
+        public static Geo Plain(int ox, int oy, int w, int h) { Geo g = new Geo(); g.Ox = ox; g.Oy = oy; g.W = w; g.H = h; return g; }
+
+        // Image agrandie de pw x ph pixels ecran en (px, py), echelle mesuree sx, sy : taille du jeu arrondie a une
+        // resolution courante, puis echelle exacte deduite de cette taille.
+        public static Geo Scaled(int px, int py, int pw, int ph, double sx, double sy)
+        {
+            Geo g = new Geo(); g.Ox = px; g.Oy = py;
+            g.W = Snap(pw / sx, WIDTHS); g.H = Snap(ph / sy, HEIGHTS);
+            g.Sx = pw / (double)g.W; g.Sy = ph / (double)g.H;
+            return g;
+        }
+
+        public static readonly int[] WIDTHS = { 800, 1024, 1280, 1366, 1600, 1920, 2560, 3440, 3840 };
+        public static readonly int[] HEIGHTS = { 600, 720, 768, 900, 1024, 1050, 1080, 1200, 1440, 2160 };
+
+        // Taille mesuree -> resolution courante la plus proche si l'ecart est sous 1 %, sinon arrondi pair.
+        public static int Snap(double v, int[] common)
+        {
+            int best = 0; double gap = double.MaxValue;
+            foreach (int c in common) { double d = Math.Abs(v - c); if (d < gap) { gap = d; best = c; } }
+            if (gap < 0.01 * best) return best;
+            return 2 * (int)Math.Round(v / 2, MidpointRounding.AwayFromZero);
+        }
+
+        // Capture du rectangle (x, y, w, h) du jeu, a la taille du jeu.
+        public Bitmap Grab(int x, int y, int w, int h)
+        {
+            if (Unit) return Img.Capture(Ox + x, Oy + y, w, h);
+            int x0 = (int)Math.Floor(x * Sx), y0 = (int)Math.Floor(y * Sy);
+            int x1 = (int)Math.Ceiling((x + w) * Sx), y1 = (int)Math.Ceiling((y + h) * Sy);
+            using (Bitmap s = Img.Capture(Ox + x0, Oy + y0, x1 - x0, y1 - y0))
+                return Resample(s, x0, y0, x, y, w, h, Sx, Sy);
+        }
+
+        // Ramene une image agrandie a la taille du jeu (fonction pure). src commence au pixel (srcX, srcY) de l'image
+        // agrandie ; le pixel (i, j) du resultat est le pixel (gx + i, gy + j) du jeu, pris au centre :
+        // floor((gx + i + 0,5) * sx). Exact avec un agrandissement au plus proche, quasi exact en bilineaire ;
+        // le meme pixel du jeu tombe toujours au meme endroit, quelle que soit la capture.
+        public static Bitmap Resample(Bitmap src, int srcX, int srcY, int gx, int gy, int w, int h, double sx, double sy)
+        {
+            int sw = src.Width, sh = src.Height;
+            int[] cx = new int[w], cy = new int[h];
+            for (int i = 0; i < w; i++) cx[i] = 3 * Math.Max(0, Math.Min(sw - 1, (int)Math.Floor((gx + i + 0.5) * sx) - srcX));
+            for (int j = 0; j < h; j++) cy[j] = Math.Max(0, Math.Min(sh - 1, (int)Math.Floor((gy + j + 0.5) * sy) - srcY));
+            BitmapData d = src.LockBits(new Rectangle(0, 0, sw, sh), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+            byte[] raw = new byte[d.Stride * sh];
+            Marshal.Copy(d.Scan0, raw, 0, raw.Length);
+            int ss = d.Stride;
+            src.UnlockBits(d);
+            Bitmap dst = new Bitmap(w, h, PixelFormat.Format24bppRgb);
+            BitmapData o = dst.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
+            byte[] outp = new byte[o.Stride * h];
+            for (int j = 0; j < h; j++)
+            {
+                int si = cy[j] * ss, di = j * o.Stride;
+                for (int i = 0; i < w; i++, di += 3)
+                {
+                    int k = si + cx[i];
+                    outp[di] = raw[k]; outp[di + 1] = raw[k + 1]; outp[di + 2] = raw[k + 2];
+                }
+            }
+            Marshal.Copy(outp, 0, o.Scan0, outp.Length);
+            dst.UnlockBits(o);
+            return dst;
+        }
+
+        // Pixel du jeu -> pixel de l'ecran (centre du pixel agrandi), et l'inverse.
+        public int[] ToScreen(int gx, int gy)
+        {
+            return new[] { Ox + (int)Math.Floor((gx + 0.5) * Sx), Oy + (int)Math.Floor((gy + 0.5) * Sy) };
+        }
+        public int[] ToGame(int sx, int sy)
+        {
+            return new[] { (int)Math.Floor((sx - Ox) / Sx), (int)Math.Floor((sy - Oy) / Sy) };
+        }
+    }
+
     // Suit la position de chaque capture pendant un balayage en serpentin.
     // Chaque capture est recalee sur la precedente et sur celles de la rangee du dessus qu'elle chevauche.
     // Les recalages nets deviennent des liens exacts ; faute de mieux, un lien estime (vitesse de defilement)

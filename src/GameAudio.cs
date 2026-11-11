@@ -74,10 +74,14 @@ static class GameAudio
     // Sessions coupees, reperees par leur identifiant d'instance : la remise du son refait l'inventaire,
     // elle marche donc depuis n'importe quel fil (fenetre, fermeture de la console...).
     static readonly HashSet<string> muted = new HashSet<string>();
+    // Identifiants de session (sans le numero du processus) des sessions coupees : gardes dans la note de plantage
+    // pour ne remettre que celles-la (pas celles que l'utilisateur avait coupees lui-meme).
+    static readonly HashSet<string> mutedKeys = new HashSet<string>();
     static int mutedPid;
 
-    // Parcourt les sessions audio du processus sur toutes les sorties actives.
-    static void ForEachSession(int pid, Action<string, ISimpleAudioVolume> action)
+    // Parcourt les sessions audio du processus sur toutes les sorties actives :
+    // action(identifiant d'instance, identifiant de session, volume).
+    static void ForEachSession(int pid, Action<string, string, ISimpleAudioVolume> action)
     {
         IMMDeviceEnumerator en = (IMMDeviceEnumerator)new MMDeviceEnumerator();
         IMMDeviceCollection devs;
@@ -96,7 +100,9 @@ static class GameAudio
                 uint p; if (s.GetProcessId(out p) != 0 || p != (uint)pid) continue;
                 IntPtr idp; if (s.GetSessionInstanceIdentifier(out idp) != 0) continue;
                 string id = Marshal.PtrToStringUni(idp); Marshal.FreeCoTaskMem(idp);
-                action(id, (ISimpleAudioVolume)s);
+                string key = "";
+                IntPtr kp; if (s.GetSessionIdentifier(out kp) == 0) { key = Marshal.PtrToStringUni(kp) ?? ""; Marshal.FreeCoTaskMem(kp); }
+                action(id, key, (ISimpleAudioVolume)s);
             }
         }
     }
@@ -110,10 +116,10 @@ static class GameAudio
             {
                 Guid ctx = Guid.Empty;
                 mutedPid = pid;
-                ForEachSession(pid, (id, v) =>
+                ForEachSession(pid, (id, key, v) =>
                 {
                     bool m; v.GetMute(out m);
-                    if (!m && v.SetMute(true, ref ctx) == 0) muted.Add(id);
+                    if (!m && v.SetMute(true, ref ctx) == 0) { muted.Add(id); if (key.Length > 0) mutedKeys.Add(key); }
                 });
             }
             catch { }
@@ -131,10 +137,10 @@ static class GameAudio
             try
             {
                 Guid ctx = Guid.Empty;
-                ForEachSession(mutedPid, (id, v) => { if (muted.Contains(id)) v.SetMute(false, ref ctx); });
+                ForEachSession(mutedPid, (id, key, v) => { if (muted.Contains(id)) v.SetMute(false, ref ctx); });
             }
             catch { }
-            muted.Clear();
+            muted.Clear(); mutedKeys.Clear();
             DeleteMarker();
         }
     }
@@ -143,6 +149,7 @@ static class GameAudio
     // Windows memorise la coupure du son de chaque programme : si Capture Zeus s'arrete brutalement apres avoir
     // coupe le jeu, le jeu resterait muet, meme relance. Une note est donc ecrite quand le son est coupe, effacee
     // quand il est remis ; au lancement suivant, si la note est encore la, le son du jeu est remis.
+    // La note contient le nom du programme puis, une par ligne, les sessions coupees par Capture Zeus.
     static string MarkerFile
     {
         get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Capture Zeus", "son_coupe.txt"); }
@@ -154,7 +161,10 @@ static class GameAudio
         {
             string name = System.Diagnostics.Process.GetProcessById(pid).ProcessName;
             Directory.CreateDirectory(Path.GetDirectoryName(MarkerFile));
-            File.WriteAllText(MarkerFile, name);
+            List<string> lines = new List<string> { name };
+            lines.AddRange(mutedKeys);
+            lines.AddRange(muted);
+            File.WriteAllLines(MarkerFile, lines.ToArray());
         }
         catch { }
     }
@@ -169,13 +179,21 @@ static class GameAudio
         try
         {
             if (!File.Exists(MarkerFile)) return 0;
-            string name = File.ReadAllText(MarkerFile).Trim();
+            string[] lines = File.ReadAllLines(MarkerFile);
+            string name = lines.Length > 0 ? lines[0].Trim() : "";
             if (name.Length == 0) { DeleteMarker(); return 0; }
+            // Sessions coupees par Capture Zeus ; ancienne note (le nom seul) : toutes les sessions muettes du jeu
+            HashSet<string> ids = new HashSet<string>();
+            for (int i = 1; i < lines.Length; i++) if (lines[i].Trim().Length > 0) ids.Add(lines[i].Trim());
             System.Diagnostics.Process[] procs = System.Diagnostics.Process.GetProcessesByName(name);
             if (procs.Length == 0) return 0;
             Guid ctx = Guid.Empty;
             foreach (System.Diagnostics.Process p in procs)
-                ForEachSession(p.Id, (id, v) => { bool m; v.GetMute(out m); if (m && v.SetMute(false, ref ctx) == 0) n++; });
+                ForEachSession(p.Id, (id, key, v) =>
+                {
+                    if (ids.Count > 0 && !ids.Contains(id) && !ids.Contains(key)) return;
+                    bool m; v.GetMute(out m); if (m && v.SetMute(false, ref ctx) == 0) n++;
+                });
             DeleteMarker();
         }
         catch { }

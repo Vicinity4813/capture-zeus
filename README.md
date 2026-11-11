@@ -34,6 +34,7 @@ Each capture creates a `capture_YYYYMMDD_HHMMSS` folder next to the exe, with `p
 ## Requirements
 
 - Zeus: Master of Olympus, with or without Poseidon, at any resolution (tested at 1024×768, 1080p and 1440p).
+- GPU scaling (graphics driver or wrapper showing the game enlarged, e.g. 1024×768 shown as 1280×1024) is supported: the enlargement is detected and screenshots and panorama are saved at the game's own size.
 - Windows 7 to 11 with .NET Framework 4 (already part of Windows 10 and 11).
 
 ## Antivirus
@@ -43,6 +44,7 @@ Capture Zeus simulates arrow key presses, switches windows and takes screenshots
 ## Building
 
 Run `build.cmd`: it uses the C# compiler that ships with Windows (.NET Framework 4) and produces `dist\Capture Zeus.exe`. `tools\make_release.ps1` builds the release zip. No other tool is needed.
+`tests\run.cmd` checks the scaling code off-screen in a few seconds; `tests\run.cmd faux` also runs a fake game in 4 display modes (it takes the mouse and keyboard for about 30 s per mode).
 
 | File | Role |
 |---|---|
@@ -96,6 +98,7 @@ Chaque capture crée un dossier `capture_AAAAMMJJ_HHMMSS` à côté de l'exe, av
 ### Prérequis
 
 - Le Maître de l'Olympe, avec ou sans Poséidon, à toutes les résolutions (testé en 1024×768, 1080p et 1440p).
+- Mise à l'échelle GPU prise en charge (pilote graphique ou enrobage qui affiche le jeu agrandi, par exemple 1024×768 affiché en 1280×1024) : l'agrandissement est détecté, et captures et panorama sont enregistrés à la taille du jeu.
 - Windows 7 à 11 avec .NET Framework 4 (déjà présent sur Windows 10 et 11).
 
 ### Antivirus
@@ -105,6 +108,7 @@ Capture Zeus simule des appuis sur les flèches, change de fenêtre et prend des
 ### Compilation
 
 Lancez `build.cmd` : il utilise le compilateur C# fourni avec Windows (.NET Framework 4) et produit `dist\Capture Zeus.exe`. `tools\make_release.ps1` prépare le zip de la release. Aucun autre outil n'est nécessaire.
+`tests\run.cmd` vérifie la mise à l'échelle hors écran en quelques secondes ; `tests\run.cmd faux` lance aussi un faux jeu dans 4 modes d'affichage (il prend la souris et le clavier environ 30 s par mode).
 
 ### Licence
 

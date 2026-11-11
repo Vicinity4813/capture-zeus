@@ -64,6 +64,10 @@ Bon à savoir
   s'adapte ; le plus sûr reste de partir du milieu de la ville.
 - La mer s'anime même en pause : quelques captures sur une mer sans repère
   peuvent être placées par estimation (un message le signale à la fin).
+- La mise à l'échelle GPU est prise en charge (le pilote graphique ou un
+  enrobage affiche le jeu agrandi, par exemple 1024x768 affiché en 1280x1024) :
+  l'agrandissement est détecté, et captures et panorama sont enregistrés à la
+  taille du jeu.
 - Si le message « La capture est noire » apparaît, Windows n'arrive pas à
   capturer le jeu : lancez-le en mode fenêtré (cnc-ddraw ou DxWnd) et réessayez.
 - Certains antivirus peuvent se méfier du programme, parce qu'il simule des

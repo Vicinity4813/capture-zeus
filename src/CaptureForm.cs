@@ -190,6 +190,7 @@ class CaptureForm : Form
         if (MessageBox.Show(this, L.T("Une capture est en cours. L'arrêter et fermer le programme ?", "A capture is in progress. Stop it and close the program?"), "Capture Zeus",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) { e.Cancel = true; return; }
         Signal.StopLoop();
+        CaptureApp.ReleaseArrows();   // une fleche restee enfoncee ferait defiler le jeu sans fin
         GameAudio.Restore();
         Environment.Exit(1);
     }

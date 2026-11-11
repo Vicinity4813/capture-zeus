@@ -9,3 +9,6 @@ capture_*/
 # Personal music (copyrighted game audio must not be published)
 # Musique personnelle (la musique du jeu ne doit pas etre publiee)
 *.wav
+
+# Tests : programmes, captures et resultats / test programs, captures and results
+tests/bin/

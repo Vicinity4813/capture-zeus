@@ -25,9 +25,9 @@ using ZeusCap;
 [assembly: System.Reflection.AssemblyCopyright("© 2026 Vicinity4813 - MIT License")]
 [assembly: System.Resources.NeutralResourcesLanguage("fr-FR")]
 [assembly: System.Runtime.InteropServices.ComVisible(false)]
-[assembly: System.Reflection.AssemblyVersion("2.4.2.0")]
-[assembly: System.Reflection.AssemblyFileVersion("2.4.2.0")]
-[assembly: System.Reflection.AssemblyInformationalVersion("2.4.2")]
+[assembly: System.Reflection.AssemblyVersion("2.5.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.5.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("2.5.0")]
 
 static class CaptureApp
 {
@@ -54,8 +54,14 @@ static class CaptureApp
     static IntPtr home;               // fenetre de la console, pour y revenir a la fin
 
     static Process proc;
-    static int[] client, vp, park;
+    // geo : repere du jeu (coordonnees du programme en pixels du jeu, voir Geo). vp : zone de la carte (pixels du jeu).
+    // park : point de repos de la souris (ecran) ; aim : point vise par SetCursorPos (park, sauf correction) ;
+    // parkAt : ou le curseur se pose (park, sauf si le jeu le replace lui-meme dans son repere).
+    static Geo geo;
+    static int[] vp, park, aim, parkAt, screen, winOrg;
     static string outDir;
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder name, int max);
 
     class View { public Bitmap Bmp; public byte[] Gray, Side, Mini; public int[] Shift, Frame; }   // Shift : recalage net sur la precedente ; Mini, Frame : mini-carte et son cadre rouge
 
@@ -175,6 +181,7 @@ static class CaptureApp
             catch (Exception e) { Signal.StopLoop(); Color(ConsoleColor.Red); Console.WriteLine(e.Message); ResetColor(); code = 1; }
         }
         else code = Execute(mode == "test", delay, scale, slow) ? 0 : 1;
+        if (Environment.GetEnvironmentVariable("CAPTURE_ZEUS_JEU") != null) return code;   // tests automatiques : pas d'attente
         Console.WriteLine(); Console.WriteLine(L.T("Appuyez sur Entrée pour fermer.", "Press Enter to close."));
         try { Console.ReadLine(); } catch { }
         return code;
@@ -246,7 +253,13 @@ static class CaptureApp
     {
         string only = Environment.GetEnvironmentVariable("CAPTURE_ZEUS_JEU");   // tests : nom exact d'un autre programme
         foreach (Process p in Process.GetProcesses())
-            if ((only != null ? p.ProcessName == only : p.ProcessName.StartsWith("Zeus", StringComparison.OrdinalIgnoreCase)) && p.MainWindowHandle != IntPtr.Zero) { proc = p; break; }
+        {
+            if (!(only != null ? p.ProcessName == only : p.ProcessName.StartsWith("Zeus", StringComparison.OrdinalIgnoreCase)) || p.MainWindowHandle == IntPtr.Zero) continue;
+            // Les outils de modding « Zeus ... » (programmes WinForms) ne sont pas le jeu
+            StringBuilder cls = new StringBuilder(256);
+            if (only == null && GetClassName(p.MainWindowHandle, cls, cls.Capacity) > 0 && cls.ToString().StartsWith("WindowsForms10.", StringComparison.Ordinal)) continue;
+            proc = p; break;
+        }
         if (proc == null) throw new Exception(L.T("Le jeu ne tourne pas. Lancez-le, chargez la partie et mettez-la en pause (touche P).", "The game is not running. Start it, load your game and pause it (P key)."));
         Console.WriteLine(L.T("Jeu trouvé : ", "Game found: ") + proc.ProcessName + ".exe");
         Signal.StartLoop();
@@ -278,18 +291,35 @@ static class CaptureApp
 
         if (Native.ForegroundPid() != (uint)proc.Id && !ForceForeground(hwnd))
             throw new Exception(L.T("La fenêtre du jeu n'est pas au premier plan.", "The game window is not in front."));
-        client = Native.ClientArea(hwnd);
-        Console.WriteLine(L.T("Fenêtre du jeu : ", "Game window: ") + client[2] + " x " + client[3] + " px");
+        int[] client = Native.ClientArea(hwnd);
+        winOrg = new[] { client[0], client[1] };
+        screen = new[] { GetSystemMetrics(0 /* SM_CXSCREEN */), GetSystemMetrics(1 /* SM_CYSCREEN */) };
+        Console.WriteLine(L.T("Fenêtre du jeu : ", "Game window: ") + client[2] + " x " + client[3] + " px ; "
+            + L.T("écran : ", "screen: ") + screen[0] + " x " + screen[1] + " px");
+        // Fenetre plus grande que le mode d'affichage : on ne capture que ce qui est a l'ecran.
+        int vx = GetSystemMetrics(76), vy = GetSystemMetrics(77), vw = GetSystemMetrics(78), vh = GetSystemMetrics(79);   // ecran virtuel
+        if (vw > 0 && vh > 0)
+        {
+            int cx0 = Math.Max(client[0], vx), cy0 = Math.Max(client[1], vy);
+            int cx1 = Math.Min(client[0] + client[2], vx + vw), cy1 = Math.Min(client[1] + client[3], vy + vh);
+            if (cx1 - cx0 >= 640 && cy1 - cy0 >= 480 && (cx0 != client[0] || cy0 != client[1] || cx1 - cx0 != client[2] || cy1 - cy0 != client[3]))
+            {
+                client = new[] { cx0, cy0, cx1 - cx0, cy1 - cy0 };
+                Console.WriteLine(string.Format(L.T("La fenêtre dépasse de l'écran : capture limitée à {0} x {1} px.", "The window is larger than the screen: capture limited to {0} x {1} px."), client[2], client[3]));
+            }
+        }
+        geo = Geo.Plain(client[0], client[1], client[2], client[3]);
+        vp = null;
         // Premier point de repos : au milieu de la carte, a gauche du panneau lateral. Si le jeu confine la souris
         // (image du jeu plus petite que la fenetre), on se cale sur cette zone : un curseur pose sur le panneau
         // lateral y fait apparaitre des surbrillances qui faussent la mesure de la vue.
-        int ax0 = client[0], ay0 = client[1], ax1 = client[0] + client[2], ay1 = client[1] + client[3];
+        int ax0 = geo.Ox, ay0 = geo.Oy, ax1 = geo.Ox + geo.W, ay1 = geo.Oy + geo.H;
         int[] clip0 = Native.CursorClip();
         if (clip0 != null)
         {
             ax0 = Math.Max(ax0, clip0[0]); ay0 = Math.Max(ay0, clip0[1]);
             ax1 = Math.Min(ax1, clip0[2]); ay1 = Math.Min(ay1, clip0[3]);
-            if (ax1 - ax0 < 2 * SIDEBAR || ay1 - ay0 < 200) { ax0 = client[0]; ay0 = client[1]; ax1 = client[0] + client[2]; ay1 = client[1] + client[3]; }
+            if (ax1 - ax0 < 2 * SIDEBAR || ay1 - ay0 < 200) { ax0 = geo.Ox; ay0 = geo.Oy; ax1 = geo.Ox + geo.W; ay1 = geo.Oy + geo.H; }
         }
         park = new[] { ax0 + (ax1 - ax0 - SIDEBAR) / 2, (ay0 + ay1) / 2 };
         ParkCursor();
@@ -313,14 +343,21 @@ static class CaptureApp
         // le reste de la fenetre est noir si le jeu est plus petit que l'ecran), puis la largeur de vue du jeu,
         // un multiple de 60 px moins 2 (1024 -> 838, 1920 -> 1738, 2560 -> 2338). La mesure au defilement ne sert
         // qu'a affiner de quelques pixels (selon l'exe) : seule, elle se trompait quand la mer occupait la vue.
-        int[] pic = Img.PictureRect(g0, client[2], client[3]);
-        if (pic == null) pic = new[] { 0, 0, client[2], client[3] };
+        int[] pic = Img.PictureRect(g0, geo.W, geo.H);
+        if (pic == null) pic = new[] { 0, 0, geo.W, geo.H };
+        // Image agrandie par la carte graphique : la suite travaille en pixels du jeu, sur l'image ramenee a sa taille
+        if (DetectScale(pic))
+        {
+            full0.Dispose(); full0 = GrabFull(); g0 = Img.Gray(full0);
+            pic = Img.PictureRect(g0, geo.W, geo.H);
+            if (pic == null) pic = new[] { 0, 0, geo.W, geo.H };
+        }
         int viewL = pic[0], picTop = pic[1], bottom = pic[3];
         int viewW = 60 * ((pic[2] - pic[0] - 180) / 60) - 2;
         int[] dv = DetectView();
         if (dv != null && Math.Abs(dv[0] - viewL) <= 8 && Math.Abs(dv[1] - (viewL + viewW)) <= 8) viewW = dv[1] - viewL;
         Console.WriteLine(L.T("Largeur de la vue : ", "View width: ") + viewW + " px");
-        if (pic[0] > 0 || pic[1] > 0 || pic[2] < client[2] || pic[3] < client[3])
+        if (pic[0] > 0 || pic[1] > 0 || pic[2] < geo.W || pic[3] < geo.H)
             Console.WriteLine(string.Format(L.T("Le jeu n'occupe qu'une partie de la fenêtre : image de {0},{1} à {2},{3}", "The game only fills part of the window: picture from {0},{1} to {2},{3}"), pic[0], pic[1], pic[2], pic[3]));
         int top = picTop + TOP_BAR + SKIP_TOP;
         // Le jeu laisse une bordure de 2 px (couleur sable) au bord droit de la vue, juste avant le panneau lateral :
@@ -328,7 +365,7 @@ static class CaptureApp
         viewW -= RIGHT_TRIM;
         vp = new[] { viewL, top, viewW, bottom - top };
         Console.WriteLine(string.Format(L.T("Zone de la carte : x={0} y={1} {2} x {3} px", "Map area: x={0} y={1} {2} x {3} px"), vp[0], vp[1], vp[2], vp[3]));
-        park = new[] { client[0] + vp[0] + vp[2] / 2, client[1] + vp[1] + vp[3] / 2 };
+        park = geo.ToScreen(vp[0] + vp[2] / 2, vp[1] + vp[3] / 2);
         ParkCursor();
         Thread.Sleep(200);
 
@@ -354,7 +391,7 @@ static class CaptureApp
         }
         // Mini-carte : position fixe dans le panneau lateral (relevee en 1024x768), validee par la presence du cadre rouge
         mini = null; miniPx = new double[] { 0, 0 }; miniCells = new double[] { 0, 0 }; miniPlaced = 0;
-        if (sideOk && pic[2] - 136 >= 0 && pic[1] + 319 + MINI_H <= client[3])
+        if (sideOk && pic[2] - 136 >= 0 && pic[1] + 319 + MINI_H <= geo.H)
         {
             mini = new[] { pic[2] - 136, pic[1] + 319, MINI_W, MINI_H };
             View t = GrabView();
@@ -549,7 +586,7 @@ static class CaptureApp
     // (ou au centre) et laisse le reste noir et immobile.
     static int[] DetectView()
     {
-        int w = client[2], h = client[3];
+        int w = geo.W, h = geo.H;
         int[][] moves = { new[] { VK_RIGHT, VK_LEFT }, new[] { VK_LEFT, VK_RIGHT } };   // l'autre sens si la vue bute sur un bord
         foreach (int[] mv in moves)
         {
@@ -591,7 +628,55 @@ static class CaptureApp
         }
         return null;
     }
-    static Bitmap GrabFull() { return Img.Capture(client[0], client[1], client[2], client[3]); }
+    static Bitmap GrabFull() { return geo.Grab(0, 0, geo.W, geo.H); }
+
+    // Agrandissement de l'image du jeu par la carte graphique. Le defilement du jeu est fixe (60 px du jeu par appui
+    // en horizontal, 30 px en vertical) : 4 appuis deplacent la vue de 240 x s et 120 x s pixels de l'ecran.
+    // Si l'image est agrandie, geo est recale sur l'image du jeu et la fonction renvoie vrai.
+    static bool DetectScale(int[] pic)
+    {
+        int pw = pic[2] - pic[0], ph = pic[3] - pic[1];
+        // Zone centrale de l'image : ni la barre du haut ni le panneau lateral
+        int zx = pic[0] + pw / 12, zy = pic[1] + ph / 8, zw = pw * 7 / 10 - pw / 12, zh = ph * 9 / 10 - ph / 8;
+        double sx = MeasureScaleAxis(zx, zy, zw, zh, 0) / 240.0;
+        if (sx <= 0) { Console.WriteLine(L.T("Agrandissement de l'image non mesuré : échelle 1.", "Picture scaling not measured: scale 1.")); return false; }
+        double sy = MeasureScaleAxis(zx, zy, zw, zh, 1) / 120.0;
+        if (sy <= 0) sy = sx;
+        if (Math.Abs(sx - 1) < 0.03 && Math.Abs(sy - 1) < 0.03) return false;
+        if (sx < 0.97 || sy < 0.97 || sx > 4.5 || sy > 4.5)
+        {
+            Color(ConsoleColor.Yellow);
+            Console.WriteLine(string.Format(L.T("Agrandissement mesuré incohérent (x{0:0.##} x {1:0.##}) : échelle 1.", "Inconsistent picture scaling measured (x{0:0.##} x {1:0.##}): scale 1."), sx, sy));
+            ResetColor();
+            return false;
+        }
+        geo = Geo.Scaled(geo.Ox + pic[0], geo.Oy + pic[1], pw, ph, sx, sy);
+        string f = Math.Abs(geo.Sx - geo.Sy) < 0.01 ? geo.Sx.ToString("0.###") : geo.Sx.ToString("0.###") + " x " + geo.Sy.ToString("0.###");
+        Console.WriteLine(string.Format(L.T("Image du jeu agrandie par la carte graphique (x{0}) : {1} x {2} affiché en {3} x {4} ; captures ramenées à la taille du jeu.",
+            "Game picture enlarged by the graphics card (x{0}): {1} x {2} shown as {3} x {4}; captures brought back to the game size."), f, geo.W, geo.H, pw, ph));
+        return true;
+    }
+
+    // Deplacement (pixels de l'ecran, 0 si echec) de la zone (x, y, w, h) pour 4 appuis sur un axe, puis retour.
+    // L'autre sens est essaye si la vue bute sur un bord.
+    static int MeasureScaleAxis(int x, int y, int w, int h, int axis)
+    {
+        int[][] dirs = axis == 0 ? new[] { new[] { VK_RIGHT, VK_LEFT, 1 }, new[] { VK_LEFT, VK_RIGHT, -1 } }
+                                 : new[] { new[] { VK_DOWN, VK_UP, 1 }, new[] { VK_UP, VK_DOWN, -1 } };
+        foreach (int[] d in dirs)
+        {
+            AssertSafe();
+            byte[] a, b;
+            using (Bitmap f = geo.Grab(x, y, w, h)) a = Img.Gray(f);
+            TapSafe(d[0], 4); Thread.Sleep(SETTLE_MS);
+            using (Bitmap f = geo.Grab(x, y, w, h)) b = Img.Gray(f);
+            TapSafe(d[1], 4); Thread.Sleep(SETTLE_MS);
+            if (Img.ChangedFraction(a, b) < STATIC_THRESHOLD) continue;   // bord de la carte
+            int[] r = Img.FindShift(a, b, w, h, axis, d[2]);
+            if (Img.IsReliable(r, 6, 2) && Math.Abs(r[axis]) >= 30) return Math.Abs(r[axis]);
+        }
+        return 0;
+    }
 
     // Capture de la zone de la carte ; refaite si le jeu a quitte le premier plan pendant la capture.
     static View GrabView()
@@ -600,11 +685,11 @@ static class CaptureApp
         {
             WaitForGame();
             View v = new View();
-            v.Bmp = Img.Capture(client[0] + vp[0], client[1] + vp[1], vp[2], vp[3]);   // seulement la zone de la carte
+            v.Bmp = geo.Grab(vp[0], vp[1], vp[2], vp[3]);   // seulement la zone de la carte
             if (Native.ForegroundPid() != (uint)proc.Id) { v.Bmp.Dispose(); continue; }
             v.Gray = Img.Gray(v.Bmp);
-            if (side != null) using (Bitmap s = Img.Capture(client[0] + side[0], client[1] + side[1], side[2], side[3])) v.Side = Img.Rgb(s);
-            if (mini != null) using (Bitmap s = Img.Capture(client[0] + mini[0], client[1] + mini[1], mini[2], mini[3])) { v.Mini = Img.Rgb(s); v.Frame = Img.FindRedFrame(v.Mini, mini[2], mini[3]); }
+            if (side != null) using (Bitmap s = geo.Grab(side[0], side[1], side[2], side[3])) v.Side = Img.Rgb(s);
+            if (mini != null) using (Bitmap s = geo.Grab(mini[0], mini[1], mini[2], mini[3])) { v.Mini = Img.Rgb(s); v.Frame = Img.FindRedFrame(v.Mini, mini[2], mini[3]); }
             return v;
         }
     }
@@ -652,9 +737,13 @@ static class CaptureApp
 
     // Place le curseur au point de repos et attend qu'il y reste : en revenant au premier plan, le jeu (ou Windows)
     // peut deplacer le curseur lui-meme juste apres, ce qui passait pour un mouvement de l'utilisateur.
+    // Le jeu peut aussi replacer le curseur dans son propre repere (image agrandie par la carte graphique : il
+    // le pose a 0,8 x la position en 1280x1024). Une position stable ainsi choisie par le jeu est acceptee si elle
+    // tombe dans la vue de la carte ; sinon le point vise est corrige du rapport observe (3 essais).
     static DateTime cursorGrace;
     static void ParkCursor()
     {
+        aim = null; int fixes = 0;
         for (int i = 0; i < 10; i++)
         {
             // Zeus confine la souris a sa zone d'origine (1024x768) meme dans une resolution plus grande : un point
@@ -668,19 +757,66 @@ static class CaptureApp
                     if (p != park[k])
                     {
                         Console.WriteLine(string.Format(L.T("Souris confinée par le jeu ({0},{1} - {2},{3}) : point de repos déplacé.", "Mouse confined by the game ({0},{1} - {2},{3}): rest point moved."), clip[0], clip[1], clip[2], clip[3]));
-                        park[k] = p;
+                        park[k] = p; aim = null;
                     }
                 }
-            Native.SetCursorPos(park[0], park[1]);
+            if (aim == null) aim = new[] { park[0], park[1] };
+            parkAt = new[] { park[0], park[1] };
+            Native.SetCursorPos(aim[0], aim[1]);
             Thread.Sleep(300);
             if (CursorParked()) break;
+            int[] c = SettledCursor();
+            if (c == null) continue;                 // le curseur bouge encore : nouvel essai
+            if (AcceptGamePlaced(c)) break;
+            if (fixes++ >= 3) continue;
+            // Correction du point vise : le jeu a pose le curseur a (c - origine) / (vise - origine) de l'endroit voulu
+            for (int k = 0; k < 2; k++)
+            {
+                double asked = aim[k] - winOrg[k], got = c[k] - winOrg[k];
+                if (Math.Abs(asked) < 20 || got / asked < 0.2) continue;
+                aim[k] = winOrg[k] + (int)Math.Round((park[k] - winOrg[k]) * asked / got);
+            }
         }
         cursorGrace = DateTime.Now.AddSeconds(4);
     }
+
+    // Position du curseur si elle ne change plus (deux lectures a 300 ms d'ecart), sinon null.
+    static int[] SettledCursor()
+    {
+        int[] c1 = Native.CursorPos();
+        Thread.Sleep(300);
+        int[] c2 = Native.CursorPos();
+        return Math.Abs(c1[0] - c2[0]) <= 2 && Math.Abs(c1[1] - c2[1]) <= 2 ? c2 : null;
+    }
+
+    // Curseur pose par le jeu en c (ecran) : accepte comme position de repos s'il est dans la vue de la carte.
+    static bool AcceptGamePlaced(int[] c)
+    {
+        int[] g = geo.ToGame(c[0], c[1]);
+        bool inside = vp != null ? g[0] >= vp[0] && g[0] < vp[0] + vp[2] && g[1] >= vp[1] && g[1] < vp[1] + vp[3]
+                                 : g[0] >= 0 && g[0] < geo.W - SIDEBAR && g[1] >= TOP_BAR && g[1] < geo.H;
+        if (!inside) return false;
+        parkAt = new[] { c[0], c[1] };
+        Console.WriteLine(string.Format(L.T("Curseur replacé par le jeu en {0},{1} (visé en {2},{3}) : position acceptée.", "Cursor placed by the game at {0},{1} (aimed at {2},{3}): position accepted."), c[0], c[1], aim[0], aim[1]));
+        return true;
+    }
+
     static bool CursorParked()
     {
         int[] c = Native.CursorPos();
-        return Math.Abs(c[0] - park[0]) <= 8 && Math.Abs(c[1] - park[1]) <= 8;
+        int tol = (int)Math.Ceiling(8 * Math.Max(geo.Sx, geo.Sy));   // 8 px du jeu
+        return Math.Abs(c[0] - parkAt[0]) <= tol && Math.Abs(c[1] - parkAt[1]) <= tol;
+    }
+
+    static Exception MouseMoved(int[] c)
+    {
+        int[] clip = Native.CursorClip();
+        string msg = string.Format(L.T("Arrêt : la souris a bougé (attendue en {0},{1}, trouvée en {2},{3}).", "Stopped: the mouse moved (expected at {0},{1}, found at {2},{3})."), parkAt[0], parkAt[1], c[0], c[1]);
+        msg += string.Format(L.T("\nÉcran {0} x {1} ; image du jeu {2} x {3} en {4},{5}, échelle x{6:0.###} x {7:0.###} ; point visé {8},{9} ; souris confinée à {10}.",
+            "\nScreen {0} x {1}; game picture {2} x {3} at {4},{5}, scale x{6:0.###} x {7:0.###}; aimed at {8},{9}; mouse confined to {10}."),
+            screen[0], screen[1], geo.W, geo.H, geo.Ox, geo.Oy, geo.Sx, geo.Sy, aim[0], aim[1],
+            clip != null ? clip[0] + "," + clip[1] + " - " + clip[2] + "," + clip[3] : "?");
+        return new Exception(msg);
     }
 
     static void AssertSafe()
@@ -690,13 +826,13 @@ static class CaptureApp
         // Juste apres le retour sur le jeu, un deplacement isole fait par le jeu est corrige (deuxieme avis) ;
         // ensuite, tout mouvement arrete la capture comme avant.
         int[] c1 = Native.CursorPos();
-        if (DateTime.Now > cursorGrace)
-            throw new Exception(string.Format(L.T("Arrêt : la souris a bougé (attendue en {0},{1}, trouvée en {2},{3}).", "Stopped: the mouse moved (expected at {0},{1}, found at {2},{3})."), park[0], park[1], c1[0], c1[1]));
-        Native.SetCursorPos(park[0], park[1]);
+        if (DateTime.Now > cursorGrace) throw MouseMoved(c1);
+        Native.SetCursorPos(aim[0], aim[1]);
         Thread.Sleep(400);
         if (CursorParked()) { Console.WriteLine(string.Format(L.T("Curseur déplacé par le jeu ({0},{1}) : remis en place.", "Cursor moved by the game ({0},{1}): put back."), c1[0], c1[1])); return; }
-        int[] c = Native.CursorPos();
-        throw new Exception(string.Format(L.T("Arrêt : la souris a bougé (attendue en {0},{1}, trouvée en {2},{3}).", "Stopped: the mouse moved (expected at {0},{1}, found at {2},{3})."), park[0], park[1], c[0], c[1]));
+        int[] c = SettledCursor();
+        if (c != null && AcceptGamePlaced(c)) return;
+        throw MouseMoved(Native.CursorPos());
     }
 
     // Deplacement de la vue entre deux captures (la mer s'anime meme en pause : decision sur le decalage mesure).

@@ -388,6 +388,13 @@ static class CaptureApp
         int[] dv = DetectView();
         if (dv != null && Math.Abs(dv[0] - viewL) <= 8 && Math.Abs(dv[1] - (viewL + viewW)) <= 8) viewW = dv[1] - viewL;
         Console.WriteLine(L.T("Largeur de la vue : ", "View width: ") + viewW + " px");
+        // Bas de la carte : le panneau lateral peut s'arreter avant (exe 2560x1440 : panneau de 768 px, carte jusqu'a 1440).
+        // Les lignes qui bougent au defilement sont de la carte : on descend jusqu'a la derniere.
+        if (dv != null && dv[2] > bottom + 8 && dv[2] <= geo.H)
+        {
+            Console.WriteLine(string.Format(L.T("La carte descend sous le panneau latéral : bas de la vue en {0} au lieu de {1}.", "The map goes on below the side panel: bottom of the view at {0} instead of {1}."), dv[2], bottom));
+            bottom = dv[2];
+        }
         if (pic[0] > 0 || pic[1] > 0 || pic[2] < geo.W || pic[3] < geo.H)
             Console.WriteLine(string.Format(L.T("Le jeu n'occupe qu'une partie de la fenêtre : image de {0},{1} à {2},{3}", "The game only fills part of the window: picture from {0},{1} to {2},{3}"), pic[0], pic[1], pic[2], pic[3]));
         int top = picTop + TOP_BAR + SKIP_TOP;
@@ -405,7 +412,7 @@ static class CaptureApp
         int sideX = vp[0] + vp[2] + RIGHT_TRIM, sideW = Math.Min(SIDEBAR - 4, pic[2] - sideX);
         if (sideW >= 60)
         {
-            side = new[] { sideX, picTop, sideW, bottom - picTop };
+            side = new[] { sideX, picTop, sideW, pic[3] - picTop };   // le panneau seul, pas la carte au-dessous
             int[][] probe = { new[] { VK_RIGHT, VK_LEFT }, new[] { VK_LEFT, VK_RIGHT }, new[] { VK_DOWN, VK_UP } };
             foreach (int[] pr in probe)
             {

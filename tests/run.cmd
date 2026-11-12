@@ -1,7 +1,7 @@
 @echo off
 rem Tests courts de Capture Zeus (mise a l'echelle de l'image du jeu).
 rem   run.cmd            -> VerifEchelle seul (hors ecran, quelques secondes)
-rem   run.cmd faux       -> VerifEchelle puis le faux jeu dans les 4 modes (1, aspect, etire, curseur)
+rem   run.cmd faux       -> VerifEchelle puis le faux jeu dans les 5 modes (1, aspect, etire, curseur, panneau)
 rem   run.cmd faux etire -> VerifEchelle puis le faux jeu dans un seul mode
 rem Le faux jeu prend la souris et le clavier environ 30 s par mode : ne touchez a rien pendant ce temps.
 rem Resultats : bin\resultat_<mode>.txt, journal de la capture : bin\journal_<mode>.txt
@@ -15,7 +15,7 @@ copy /y "..\dist\Capture Zeus.exe" bin\ >nul
 "%CSC%" /nologo /target:winexe /platform:x86 /optimize+ /codepage:65001 /out:bin\ZeusFaux.exe /r:System.Drawing.dll /r:System.Windows.Forms.dll ZeusFaux.cs || exit /b 1
 bin\VerifEchelle.exe || exit /b 1
 if /i not "%~1"=="faux" exit /b 0
-set "MODES=1 aspect etire curseur"
+set "MODES=1 aspect etire curseur panneau"
 if not "%~2"=="" set "MODES=%~2"
 set FAILED=0
 for %%m in (%MODES%) do (

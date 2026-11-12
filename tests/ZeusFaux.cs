@@ -5,6 +5,8 @@
 //   aspect   agrandi en gardant les proportions (bilineaire), centre, bandes noires
 //   etire    agrandi a tout l'ecran (echelles X et Y differentes, au plus proche)
 //   curseur  comme aspect, et le jeu replace le curseur a 0,8 x sa position (comme en 1280x1024)
+//   panneau  comme 1, mais le panneau lateral s'arrete a 520 px (noir dessous) alors que la carte va jusqu'en bas
+//            (comme l'exe 2560x1440 : panneau de 768 px, carte jusqu'a 1440)
 // Usage : ZeusFaux.exe <mode> "<Capture Zeus.exe>"
 // Le faux jeu lance la capture (CAPTURE_ZEUS_JEU=ZeusFaux, --delai 1 --silencieux), attend la fin, compare le panorama
 // au monde (taille exacte, ecart moyen faible), ecrit resultat_<mode>.txt et journal_<mode>.txt a cote de la capture
@@ -34,6 +36,8 @@ class ZeusFaux : Form
     const int SKIP_TOP = 64, RIGHT_TRIM = 4;   // ce que Capture Zeus laisse de cote dans chaque capture
 
     static string mode, captureExe;
+    static bool Plain { get { return mode == "1" || mode == "panneau"; } }   // image non agrandie
+    const int PANEL_END = 520;   // mode panneau : bas du panneau lateral
     static int result = 2;
     readonly Bitmap world, thumb, frame;
     int camX = (WORLD_W - VIEW_W) / 2, camY = (WORLD_H - (GH - TOP)) / 2;
@@ -45,9 +49,9 @@ class ZeusFaux : Form
     static int Main(string[] args)
     {
         SetProcessDPIAware();
-        if (args.Length < 2) { Console.WriteLine("Usage : ZeusFaux.exe <1|aspect|etire|curseur> \"<Capture Zeus.exe>\""); return 2; }
+        if (args.Length < 2) { Console.WriteLine("Usage : ZeusFaux.exe <1|aspect|etire|curseur|panneau> \"<Capture Zeus.exe>\""); return 2; }
         mode = args[0].ToLowerInvariant(); captureExe = Path.GetFullPath(args[1]);
-        if (mode != "1" && mode != "aspect" && mode != "etire" && mode != "curseur") { Console.WriteLine("Mode inconnu : " + mode); return 2; }
+        if (mode != "1" && mode != "aspect" && mode != "etire" && mode != "curseur" && mode != "panneau") { Console.WriteLine("Mode inconnu : " + mode); return 2; }
         Application.Run(new ZeusFaux());
         return result;
     }
@@ -84,7 +88,7 @@ class ZeusFaux : Form
         using (Graphics g = Graphics.FromImage(thumb)) { g.InterpolationMode = InterpolationMode.HighQualityBilinear; g.DrawImage(world, new Rectangle(0, 0, MINI_W, MINI_H)); }
         frame = new Bitmap(GW, GH, PixelFormat.Format24bppRgb);
         int sw = Bounds.Width, sh = Bounds.Height;
-        if (mode == "1") dest = new Rectangle(0, 0, GW, GH);
+        if (Plain) dest = new Rectangle(0, 0, GW, GH);
         else if (mode == "etire") dest = new Rectangle(0, 0, sw, sh);
         else
         {
@@ -95,7 +99,7 @@ class ZeusFaux : Form
         Render();
         cursorTimer.Interval = 30; cursorTimer.Tick += OnCursorTick;
         Shown += (o, e) => { Activate(); new Thread(RunCapture) { IsBackground = true }.Start(); };
-        Activated += (o, e) => { if (mode == "1") { RECT rc = new RECT { Left = 0, Top = 0, Right = GW, Bottom = GH }; ClipCursor(ref rc); } if (mode == "curseur") cursorTimer.Start(); };
+        Activated += (o, e) => { if (Plain) { RECT rc = new RECT { Left = 0, Top = 0, Right = GW, Bottom = GH }; ClipCursor(ref rc); } if (mode == "curseur") cursorTimer.Start(); };
         Deactivate += (o, e) => { UnclipCursor(IntPtr.Zero); cursorTimer.Stop(); };
         FormClosed += (o, e) => UnclipCursor(IntPtr.Zero);
     }
@@ -115,6 +119,7 @@ class ZeusFaux : Form
                 for (int y = 60; y < 300; y += 48) g.FillRectangle(btn, VIEW_W + 20, y, SIDE - 40, 36);
                 for (int y = 450; y < GH - 20; y += 40) g.FillRectangle(btn, VIEW_W + 15, y, SIDE - 30, 28);
             }
+            if (mode == "panneau") g.FillRectangle(Brushes.Black, VIEW_W, PANEL_END, SIDE, GH - PANEL_END);
             g.DrawImageUnscaled(thumb, MINI_X, MINI_Y);
             int fx = MINI_X + camX * MINI_W / WORLD_W, fy = MINI_Y + camY * MINI_H / WORLD_H;
             int fw = VIEW_W * MINI_W / WORLD_W, fh = (GH - TOP) * MINI_H / WORLD_H;
@@ -126,7 +131,7 @@ class ZeusFaux : Form
     {
         Graphics g = e.Graphics;
         using (Region black = new Region(ClientRectangle)) { black.Exclude(dest); g.FillRegion(Brushes.Black, black); }
-        if (mode == "1") { g.DrawImageUnscaled(frame, 0, 0); return; }
+        if (Plain) { g.DrawImageUnscaled(frame, 0, 0); return; }
         g.InterpolationMode = mode == "etire" ? InterpolationMode.NearestNeighbor : InterpolationMode.Bilinear;
         g.PixelOffsetMode = PixelOffsetMode.Half;
         using (ImageAttributes at = new ImageAttributes())
@@ -194,7 +199,7 @@ class ZeusFaux : Form
             if (p.ExitCode != 0 || pano == null || !File.Exists(pano)) { verdict += "pas de panorama"; result = 1; }
             else
             {
-                string cmp; bool ok = Compare(world, pano, mode == "1" ? 0.5 : 4.0, out cmp);
+                string cmp; bool ok = Compare(world, pano, Plain ? 0.5 : 4.0, out cmp);
                 verdict += cmp; result = ok ? 0 : 1;
             }
         }

@@ -1,5 +1,5 @@
 // Faux jeu pour tester Capture Zeus sans le jeu : un monde procedural de 2000 x 1300 px vu par une fenetre de jeu
-// de 1024x768 (barre du haut de 30 px, panneau de 186 px, mini-carte avec cadre rouge, fleches a 60 / 30 px par appui),
+// de 1024x768 (barre du haut de 30 px, panneau de 186 px, mini-carte avec cadre rouge, fleches a 60 px par appui dans les deux sens, comme le vrai jeu en 1024x768),
 // affichee en plein ecran selon le mode :
 //   1        1024x768 non agrandi, dans le coin d'une fenetre plus grande ; souris confinee a l'image (comme Zeus)
 //   aspect   agrandi en gardant les proportions (bilineaire), centre, bandes noires
@@ -140,7 +140,7 @@ class ZeusFaux : Form
     {
         int dx = 0, dy = 0;
         if (keyData == Keys.Left) dx = -60; else if (keyData == Keys.Right) dx = 60;
-        else if (keyData == Keys.Up) dy = -30; else if (keyData == Keys.Down) dy = 30;
+        else if (keyData == Keys.Up) dy = -60; else if (keyData == Keys.Down) dy = 60;   // comme le vrai jeu en 1024x768 (et non 30 px)
         else if (keyData == Keys.Escape) { Close(); return true; }
         else return base.ProcessCmdKey(ref msg, keyData);
         camX = Math.Max(0, Math.Min(WORLD_W - VIEW_W, camX + dx));

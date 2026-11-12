@@ -132,6 +132,35 @@ static class CaptureApp
     }
     class Move { public bool Static, Ok; public int Dx, Dy; public int[] Res; }
 
+    // Journal recopie dans journal.txt, dans le dossier de la capture (pour comprendre un retour d'utilisateur).
+    static TextWriter journal, plainOut;
+    class Tee : TextWriter
+    {
+        readonly TextWriter a, b;
+        public Tee(TextWriter a, TextWriter b) { this.a = a; this.b = b; }
+        public override Encoding Encoding { get { return a.Encoding; } }
+        public override void Write(char c) { a.Write(c); try { b.Write(c); } catch { } }
+        public override void Write(string s) { a.Write(s); try { b.Write(s); } catch { } }
+    }
+    static void StartJournal()
+    {
+        try
+        {
+            journal = new StreamWriter(Path.Combine(outDir, "journal.txt"), false, new UTF8Encoding(true)) { AutoFlush = true };
+            journal.WriteLine("Capture Zeus " + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3) + " - " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            journal.WriteLine(L.T("Jeu trouvé : ", "Game found: ") + proc.ProcessName + ".exe");
+            plainOut = Console.Out; Console.SetOut(new Tee(plainOut, journal));
+        }
+        catch { journal = null; }
+    }
+    static void StopJournal()
+    {
+        if (journal == null) return;
+        Console.SetOut(plainOut);
+        try { journal.Dispose(); } catch { }
+        journal = null;
+    }
+
     [DllImport("kernel32.dll")] static extern bool AllocConsole();
     public static string LastPanorama, LastDir;
 
@@ -208,6 +237,7 @@ static class CaptureApp
         }
         finally
         {
+            StopJournal();
             GameAudio.Restore();
         }
     }
@@ -268,6 +298,7 @@ static class CaptureApp
         outDir = Path.Combine(exeDir, "capture_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));
         Directory.CreateDirectory(outDir);
         LastDir = outDir;
+        StartJournal();
 
         Console.WriteLine(L.T("La musique joue tant que le programme travaille : quand elle s'arrête, le panorama est prêt.", "The music plays while the program is working: when it stops, the panorama is ready."));
         Console.WriteLine(L.T("Un Alt+Tab trop tôt ne casse rien : la capture se met en pause et reprend quand vous revenez dans le jeu.", "An early Alt+Tab breaks nothing: the capture pauses and resumes when you go back to the game."));
@@ -638,19 +669,21 @@ static class CaptureApp
         int pw = pic[2] - pic[0], ph = pic[3] - pic[1];
         // Zone centrale de l'image : ni la barre du haut ni le panneau lateral
         int zx = pic[0] + pw / 12, zy = pic[1] + ph / 8, zw = pw * 7 / 10 - pw / 12, zh = ph * 9 / 10 - ph / 8;
-        double sx = MeasureScaleAxis(zx, zy, zw, zh, 0) / 240.0;
-        if (sx <= 0) { Console.WriteLine(L.T("Agrandissement de l'image non mesuré : échelle 1.", "Picture scaling not measured: scale 1.")); return false; }
-        double sy = MeasureScaleAxis(zx, zy, zw, zh, 1) / 120.0;
-        if (sy <= 0) sy = sx;
-        if (Math.Abs(sx - 1) < 0.03 && Math.Abs(sy - 1) < 0.03) return false;
-        if (sx < 0.97 || sy < 0.97 || sx > 4.5 || sy > 4.5)
+        // Seul le defilement horizontal sert de repere (60 px du jeu par appui) : le vertical varie selon l'exe
+        // et la resolution. La hauteur est deduite de la largeur (voir Geo.FromWidth).
+        int dx = MeasureScaleAxis(zx, zy, zw, zh, 0);
+        if (dx <= 0) { Console.WriteLine(L.T("Agrandissement de l'image non mesuré : échelle 1.", "Picture scaling not measured: scale 1.")); return false; }
+        double sx = dx / 240.0;
+        if (Math.Abs(sx - 1) < 0.03) return false;
+        Console.WriteLine(string.Format(L.T("Défilement horizontal : {0} px de l'écran pour 4 appuis (240 px du jeu).", "Horizontal scrolling: {0} screen px for 4 key presses (240 game px)."), dx));
+        if (sx < 0.97 || sx > 4.5)
         {
             Color(ConsoleColor.Yellow);
-            Console.WriteLine(string.Format(L.T("Agrandissement mesuré incohérent (x{0:0.##} x {1:0.##}) : échelle 1.", "Inconsistent picture scaling measured (x{0:0.##} x {1:0.##}): scale 1."), sx, sy));
+            Console.WriteLine(string.Format(L.T("Agrandissement mesuré incohérent (x{0:0.##}) : échelle 1.", "Inconsistent picture scaling measured (x{0:0.##}): scale 1."), sx));
             ResetColor();
             return false;
         }
-        geo = Geo.Scaled(geo.Ox + pic[0], geo.Oy + pic[1], pw, ph, sx, sy);
+        geo = Geo.FromWidth(geo.Ox + pic[0], geo.Oy + pic[1], pw, ph, sx);
         string f = Math.Abs(geo.Sx - geo.Sy) < 0.01 ? geo.Sx.ToString("0.###") : geo.Sx.ToString("0.###") + " x " + geo.Sy.ToString("0.###");
         Console.WriteLine(string.Format(L.T("Image du jeu agrandie par la carte graphique (x{0}) : {1} x {2} affiché en {3} x {4} ; captures ramenées à la taille du jeu.",
             "Game picture enlarged by the graphics card (x{0}): {1} x {2} shown as {3} x {4}; captures brought back to the game size."), f, geo.W, geo.H, pw, ph));

@@ -562,6 +562,23 @@ namespace ZeusCap
             return g;
         }
 
+        // Echelle d'apres la seule largeur : le defilement horizontal du jeu (60 px par appui) est un repere sur,
+        // le vertical non (en jeu, 4 appuis vers le bas ont donne 240 px en 1024x768 et 450 px en 2560x1440).
+        // Proportions gardees si la hauteur obtenue est une resolution courante ; sinon image etiree, et la hauteur
+        // du jeu est celle qui va avec sa largeur (1024 -> 768...) quand il n'y en a qu'une.
+        public static Geo FromWidth(int px, int py, int pw, int ph, double sx)
+        {
+            int w = Snap(pw / sx, WIDTHS);
+            double h = ph * w / (double)pw;                      // hauteur du jeu si les proportions sont gardees
+            int hs = Snap(ph / (pw / (double)w), HEIGHTS);
+            if (Array.IndexOf(HEIGHTS, hs) >= 0 && Math.Abs(h - hs) < 0.01 * hs) return Scaled(px, py, pw, ph, pw / (double)w, ph / (double)hs);
+            int i = Array.IndexOf(PAIR_W, w);
+            if (i >= 0) return Scaled(px, py, pw, ph, pw / (double)w, ph / (double)PAIR_H[i]);
+            return Scaled(px, py, pw, ph, pw / (double)w, pw / (double)w);
+        }
+        static readonly int[] PAIR_W = { 800, 1024, 1366, 1600, 1920, 2560, 3440, 3840 };
+        static readonly int[] PAIR_H = { 600, 768, 768, 900, 1080, 1440, 1440, 2160 };
+
         public static readonly int[] WIDTHS = { 800, 1024, 1280, 1366, 1600, 1920, 2560, 3440, 3840 };
         public static readonly int[] HEIGHTS = { 600, 720, 768, 900, 1024, 1050, 1080, 1200, 1440, 2160 };
 

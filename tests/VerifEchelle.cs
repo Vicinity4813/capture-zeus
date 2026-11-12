@@ -1,7 +1,7 @@
 // Verification hors ecran de Geo (src\ZeusCapture.cs) : image du jeu agrandie par la carte graphique.
 // Une image procedurale de 1024x768 est agrandie par GDI+ (bilineaire et au plus proche) a plusieurs echelles ;
 // Geo.Resample doit retrouver l'original (exact au plus proche, ecart moyen sous 4 en bilineaire : 3,6 a x2,
-// ou le centre de chaque pixel du jeu tombe entre deux pixels de l'ecran), Snap et Geo.Scaled la taille du jeu. Quelques secondes, sans ecran.
+// ou le centre de chaque pixel du jeu tombe entre deux pixels de l'ecran), Snap et Geo.FromWidth la taille du jeu. Quelques secondes, sans ecran.
 //   VerifEchelle.exe   -> code 0 si tout est bon
 using System;
 using System.Drawing;
@@ -117,22 +117,24 @@ static class VerifEchelle
             }
         }
 
-        Console.WriteLine("Snap et Geo.Scaled : taille du jeu d'apres le defilement mesure");
-        // 4 appuis = 240 px du jeu en horizontal, 120 px en vertical
+        Console.WriteLine("Geo.FromWidth : taille du jeu d'apres le seul defilement horizontal (4 appuis = 240 px du jeu)");
         int[][] cases = {
-            new[] { 1280, 1024, 300, 160, 1024, 768 },   // 1024x768 etire en 1280x1024
-            new[] { 1280, 960, 300, 150, 1024, 768 },    // proportions gardees
-            new[] { 1280, 1024, 299, 161, 1024, 768 },   // mesure a 1 px pres
-            new[] { 2880, 2160, 675, 337, 1024, 768 },   // 4K, proportions gardees
-            new[] { 3840, 2160, 900, 338, 1024, 768 },   // 4K etire
-            new[] { 1920, 1080, 450, 225, 1024, 576 },   // pas une resolution courante : arrondi pair
-            new[] { 1600, 1200, 300, 150, 1280, 960 },
+            new[] { 1280, 1024, 300, 1024, 768 },    // 1024x768 etire en 1280x1024
+            new[] { 1280, 960, 300, 1024, 768 },     // proportions gardees
+            new[] { 1280, 1024, 299, 1024, 768 },    // mesure a 1 px pres
+            new[] { 2880, 2160, 675, 1024, 768 },    // 4K, proportions gardees
+            new[] { 3840, 2160, 900, 1024, 768 },    // 4K etire
+            new[] { 1920, 1440, 450, 1024, 768 },    // 1440p, proportions gardees (faux jeu, mode aspect)
+            new[] { 2560, 1440, 600, 1024, 768 },    // 1440p etire (faux jeu, mode etire)
+            new[] { 1920, 1080, 450, 1024, 768 },    // 1080p etire
+            new[] { 3840, 2160, 360, 2560, 1440 },   // jeu 2560x1440 agrandi x1,5
+            new[] { 1600, 1200, 300, 1280, 960 },    // largeur sans hauteur attitree : proportions gardees
         };
         foreach (int[] c in cases)
         {
-            Geo g = Geo.Scaled(0, 0, c[0], c[1], c[2] / 240.0, c[3] / 120.0);
-            Check(g.W == c[4] && g.H == c[5], string.Format("{0} x {1}, decalages {2} / {3} -> {4} x {5} (attendu {6} x {7}), echelle {8:0.###} x {9:0.###}",
-                c[0], c[1], c[2], c[3], g.W, g.H, c[4], c[5], g.Sx, g.Sy));
+            Geo g = Geo.FromWidth(0, 0, c[0], c[1], c[2] / 240.0);
+            Check(g.W == c[3] && g.H == c[4], string.Format("{0} x {1}, decalage {2} -> {3} x {4} (attendu {5} x {6}), echelle {7:0.###} x {8:0.###}",
+                c[0], c[1], c[2], g.W, g.H, c[3], c[4], g.Sx, g.Sy));
         }
         Check(Geo.Snap(1019.5, Geo.WIDTHS) == 1024 && Geo.Snap(1001, Geo.WIDTHS) == 1002 && Geo.Snap(767, Geo.HEIGHTS) == 768, "Snap : 1019,5 -> 1024 ; 1001 -> 1002 ; 767 -> 768");
 
